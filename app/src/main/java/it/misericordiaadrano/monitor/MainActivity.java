@@ -39,7 +39,7 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
 
     // Indirizzo proposto al primo avvio (modificabile dal menu nascosto)
-    private static final String URL_PREDEFINITO = "https://www.TUODOMINIO.it/monitorTrasporti.php";
+    private static final String URL_PREDEFINITO = "https://www.misericordiadiadrano.it/servizi/monitorTrasporti.php";
     private static final long RIPROVA_MS = 30_000;
 
     private WebView web;
@@ -66,11 +66,12 @@ public class MainActivity extends Activity {
         configuraWebView();
         schermoPieno();
 
-        if (prefs.getString("url", null) == null) {
-            chiediUrl(true);
-        } else {
-            web.loadUrl(prefs.getString("url", URL_PREDEFINITO));
+        // indirizzo del monitor: quello del sito della Misericordia (si cambia dal menu nascosto)
+        String salvato = prefs.getString("url", null);
+        if (salvato == null || salvato.contains("TUODOMINIO") || !salvato.contains("monitorTrasporti")) {
+            prefs.edit().putString("url", URL_PREDEFINITO).apply();
         }
+        web.loadUrl(prefs.getString("url", URL_PREDEFINITO));
         Standby.programma(this);
         azioneInAttesa = getIntent().getStringExtra(Standby.EXTRA_AZIONE);
     }
@@ -397,7 +398,10 @@ public class MainActivity extends Activity {
                 .setCancelable(!primoAvvio)
                 .setPositiveButton("Salva", (d, w) -> {
                     String url = campo.getText().toString().trim();
+                    if (url.isEmpty()) url = URL_PREDEFINITO;
                     if (!url.startsWith("http")) url = "https://" + url;
+                    // se è stato scritto solo il dominio, aggiunge il percorso del monitor
+                    if (!url.contains("monitorTrasporti")) url = url.replaceAll("/+$", "") + "/servizi/monitorTrasporti.php";
                     prefs.edit().putString("url", url).apply();
                     web.loadUrl(url);
                     if (primoAvvio) apriPermessoOverlay();
