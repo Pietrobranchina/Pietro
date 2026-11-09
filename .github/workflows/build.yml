@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,3 +26,14 @@ jobs:
         with:
           name: MonitorTrasporti-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      # copia l'APK nel ramo "apk" (così si scarica anche dalla pagina del progetto)
+      - run: |
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/MonitorTrasporti.apk
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan apk
+          git rm -rfq .
+          cp /tmp/MonitorTrasporti.apk .
+          git add MonitorTrasporti.apk
+          git commit -qm "APK Monitor Trasporti"
+          git push -f origin apk
