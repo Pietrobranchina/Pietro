@@ -6,6 +6,7 @@ import android.app.KeyguardManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -53,6 +54,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // monitor messo in pausa con "Esci": se il box apre la schermata Home, si passa al launcher originale
+        if (inPausa(getIntent())) { apriLauncherOriginale(); finish(); return; }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_FULLSCREEN
                 | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
@@ -79,6 +82,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (inPausa(intent)) { apriLauncherOriginale(); finish(); return; }
         setIntent(intent);
         azioneInAttesa = intent.getStringExtra(Standby.EXTRA_AZIONE);
     }
@@ -218,6 +222,45 @@ public class MainActivity extends Activity {
         handler.postDelayed(() -> { if (!inStandby) web.loadUrl(prefs.getString("url", URL_PREDEFINITO)); }, RIPROVA_MS);
     }
 
+    // ---------- Uscita ----------
+    // "Esci" mette in pausa il monitor e torna alla schermata Home originale del box.
+    // Il monitor riparte: riaprendo l'app dall'icona, oppure alla prossima accensione del box.
+    private boolean inPausa(Intent i) {
+        if (!prefs().getBoolean("pausa", false)) return false;
+        boolean daHome = i != null && i.getCategories() != null && i.getCategories().contains(Intent.CATEGORY_HOME);
+        if (daHome) return true;
+        // aperta dall'icona o dalla sveglia dello standby: il monitor riparte
+        prefs().edit().putBoolean("pausa", false).apply();
+        return false;
+    }
+
+    private SharedPreferences prefs() {
+        return prefs != null ? prefs : getSharedPreferences("config", MODE_PRIVATE);
+    }
+
+    private void esci() {
+        prefs().edit().putBoolean("pausa", true).apply();
+        Toast.makeText(this, "Monitor in pausa: per riavviarlo apri l'app Monitor Trasporti", Toast.LENGTH_LONG).show();
+        if (!apriLauncherOriginale()) apriImpostazioni(Settings.ACTION_SETTINGS);
+        finish();
+    }
+
+    /** apre la schermata Home originale del box (un launcher diverso da questa app) */
+    private boolean apriLauncherOriginale() {
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        for (ResolveInfo ri : getPackageManager().queryIntentActivities(home, 0)) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || pkg.equals("com.android.settings")
+                    || ri.activityInfo.name.endsWith("FallbackHome")) continue;
+            try {
+                startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setClassName(pkg, ri.activityInfo.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return true;
+            } catch (Exception ignored) { }
+        }
+        return false;
+    }
+
     // apre le impostazioni di Android (serve quando l'app è la schermata Home e non si può uscire)
     private void apriImpostazioni(String azione) {
         try {
@@ -308,7 +351,7 @@ public class MainActivity extends Activity {
         String[] voci = {"Ricarica pagina", "Cambia indirizzo", "Permesso avvio automatico",
                 "Standby adesso", "Orari standby (" + stato + ")",
                 Standby.attivo(this) ? "Disattiva standby automatico" : "Attiva standby automatico",
-                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Diagnostica", "Scegli schermata Home", "Impostazioni del box", "Esci"};
+                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Diagnostica", "Scegli schermata Home", "Impostazioni del box", "Esci (torna al box)"};
         new AlertDialog.Builder(this)
                 .setTitle("Monitor Trasporti")
                 .setItems(voci, (d, i) -> {
@@ -328,7 +371,7 @@ public class MainActivity extends Activity {
                         case 7: mostraDiagnostica(); break;
                         case 8: apriImpostazioni(Settings.ACTION_HOME_SETTINGS); break;
                         case 9: apriImpostazioni(Settings.ACTION_SETTINGS); break;
-                        case 10: finishAffinity(); break;
+                        case 10: esci(); break;
                     }
                 })
                 .show();
