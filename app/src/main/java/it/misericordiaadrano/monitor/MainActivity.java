@@ -21,6 +21,9 @@ import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.SslErrorHandler;
+import android.net.http.SslError;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -155,24 +158,75 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                if (req.isForMainFrame()) mostraErroreERiprova();
+                if (req.isForMainFrame()) {
+                    String d = Build.VERSION.SDK_INT >= 23 ? err.getDescription() + " (codice " + err.getErrorCode() + ")" : "";
+                    mostraErroreERiprova("Connessione non riuscita", d);
+                }
             }
 
             @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView view, int code, String desc, String url) {
-                mostraErroreERiprova();
+                if (Build.VERSION.SDK_INT < 23) mostraErroreERiprova("Connessione non riuscita", desc + " (codice " + code + ")");
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse r) {
+                if (req.isForMainFrame()) {
+                    int c = r.getStatusCode();
+                    String spiega = c == 404 ? "pagina non trovata: controlla l'indirizzo (deve contenere /servizi/monitorTrasporti.php)"
+                            : c >= 500 ? "errore del sito (file mancanti o non aggiornati sul server)"
+                            : c == 403 ? "accesso negato dal server" : "";
+                    mostraErroreERiprova("Il sito ha risposto con errore " + c, spiega);
+                }
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler h, SslError e) {
+                h.cancel();
+                mostraErroreERiprova("Certificato di sicurezza non accettato",
+                        "il box è troppo vecchio o ha la data/ora sbagliata (errore SSL " + e.getPrimaryError() + "). "
+                                + "Controlla la data e l'ora del box; se sono giuste aggiorna \"Android System WebView\".");
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                ultimoUrl = url;
             }
         });
     }
 
-    private void mostraErroreERiprova() {
-        web.loadData("<html><body style='background:#111;color:#eee;font-family:sans-serif;"
+    private String ultimoErrore = "nessuno";
+    private String ultimoUrl = "";
+
+    private static String esc(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private void mostraErroreERiprova(String titolo, String dettaglio) {
+        ultimoErrore = titolo + (dettaglio.isEmpty() ? "" : ": " + dettaglio);
+        String url = prefs.getString("url", URL_PREDEFINITO);
+        web.loadDataWithBaseURL(null, "<html><body style='background:#0A2E4A;color:#fff;font-family:sans-serif;"
                 + "display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>"
-                + "<div style='text-align:center'><h1>Connessione non disponibile</h1>"
-                + "<p>Nuovo tentativo tra 30 secondi…</p></div></body></html>", "text/html", "UTF-8");
+                + "<div style='text-align:center;max-width:80%'><h1>" + esc(titolo) + "</h1>"
+                + "<p style='font-size:1.3em'>" + esc(dettaglio) + "</p>"
+                + "<p style='opacity:.7'>Indirizzo: " + esc(url) + "</p>"
+                + "<p style='opacity:.7'>Nuovo tentativo tra 30 secondi · menu: 5 volte INDIETRO</p></div></body></html>",
+                "text/html", "UTF-8", null);
         handler.removeCallbacksAndMessages(null);
-        handler.postDelayed(() -> web.loadUrl(prefs.getString("url", URL_PREDEFINITO)), RIPROVA_MS);
+        handler.postDelayed(() -> { if (!inStandby) web.loadUrl(prefs.getString("url", URL_PREDEFINITO)); }, RIPROVA_MS);
+    }
+
+    private void mostraDiagnostica() {
+        String ua = web.getSettings().getUserAgentString();
+        String testo = "Android: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n"
+                + "Browser interno: " + ua + "\n\n"
+                + "Indirizzo impostato: " + prefs.getString("url", URL_PREDEFINITO) + "\n"
+                + "Ultima pagina aperta: " + ultimoUrl + "\n"
+                + "Ultimo errore: " + ultimoErrore + "\n"
+                + "Permesso spegnimento schermo: " + (puoSpegnere() ? "sì" : "no") + "\n"
+                + "Data e ora del box: " + new java.util.Date();
+        new AlertDialog.Builder(this).setTitle("Diagnostica").setMessage(testo).setPositiveButton("OK", null).show();
     }
 
     private void schermoPieno() {
@@ -240,7 +294,7 @@ public class MainActivity extends Activity {
         String[] voci = {"Ricarica pagina", "Cambia indirizzo", "Permesso avvio automatico",
                 "Standby adesso", "Orari standby (" + stato + ")",
                 Standby.attivo(this) ? "Disattiva standby automatico" : "Attiva standby automatico",
-                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Esci"};
+                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Diagnostica", "Esci"};
         new AlertDialog.Builder(this)
                 .setTitle("Monitor Trasporti")
                 .setItems(voci, (d, i) -> {
@@ -257,7 +311,8 @@ public class MainActivity extends Activity {
                                     Toast.LENGTH_SHORT).show();
                             break;
                         case 6: chiediPermessoSpegnimento(); break;
-                        case 7: finishAffinity(); break;
+                        case 7: mostraDiagnostica(); break;
+                        case 8: finishAffinity(); break;
                     }
                 })
                 .show();
