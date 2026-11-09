@@ -13,7 +13,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # l'SDK Android è già presente sulla macchina di GitHub
+      - run: echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
