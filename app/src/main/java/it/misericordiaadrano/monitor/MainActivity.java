@@ -217,6 +217,19 @@ public class MainActivity extends Activity {
         handler.postDelayed(() -> { if (!inStandby) web.loadUrl(prefs.getString("url", URL_PREDEFINITO)); }, RIPROVA_MS);
     }
 
+    // apre le impostazioni di Android (serve quando l'app è la schermata Home e non si può uscire)
+    private void apriImpostazioni(String azione) {
+        try {
+            startActivity(new Intent(azione).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception e2) {
+                Toast.makeText(this, "Impostazioni non disponibili su questo box", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     private void mostraDiagnostica() {
         String ua = web.getSettings().getUserAgentString();
         String testo = "Android: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n"
@@ -294,7 +307,7 @@ public class MainActivity extends Activity {
         String[] voci = {"Ricarica pagina", "Cambia indirizzo", "Permesso avvio automatico",
                 "Standby adesso", "Orari standby (" + stato + ")",
                 Standby.attivo(this) ? "Disattiva standby automatico" : "Attiva standby automatico",
-                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Diagnostica", "Esci"};
+                "Permesso spegnimento schermo" + (puoSpegnere() ? " (già dato)" : ""), "Diagnostica", "Scegli schermata Home", "Impostazioni del box", "Esci"};
         new AlertDialog.Builder(this)
                 .setTitle("Monitor Trasporti")
                 .setItems(voci, (d, i) -> {
@@ -312,7 +325,9 @@ public class MainActivity extends Activity {
                             break;
                         case 6: chiediPermessoSpegnimento(); break;
                         case 7: mostraDiagnostica(); break;
-                        case 8: finishAffinity(); break;
+                        case 8: apriImpostazioni(Settings.ACTION_HOME_SETTINGS); break;
+                        case 9: apriImpostazioni(Settings.ACTION_SETTINGS); break;
+                        case 10: finishAffinity(); break;
                     }
                 })
                 .show();
@@ -398,8 +413,9 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName())));
             } catch (Exception e) {
-                Toast.makeText(this, "Impostazione non disponibile su questo box: "
-                        + "imposta l'app come schermata Home", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Su questo box: premi il tasto HOME del telecomando e scegli "
+                        + "Monitor Trasporti › Sempre", Toast.LENGTH_LONG).show();
+                apriImpostazioni(Settings.ACTION_HOME_SETTINGS);
             }
         } else if (Build.VERSION.SDK_INT >= 23) {
             Toast.makeText(this, "Avvio automatico già autorizzato", Toast.LENGTH_SHORT).show();
